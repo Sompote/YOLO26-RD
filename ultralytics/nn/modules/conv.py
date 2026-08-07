@@ -357,30 +357,34 @@ class EdgeSPD(nn.Module):
 
 
 class LearnableContrast(nn.Module):
-    """Learnable adaptive contrast stem for low-contrast imagery.
+    """Learnable tile-wise contrast adaptation stem for low-contrast imagery.
 
-    Predicts per-channel gamma and gain from global image statistics (mean and standard deviation)
-    and applies an end-to-end learnable gamma correction to the [0, 1] normalized input, adapting
-    contrast per image before feature extraction.
+    A differentiable, end-to-end learnable analogue of CLAHE: the [0, 1] normalized input is
+    divided into a grid of tiles, per-tile per-channel gamma and gain are predicted from local
+    statistics (mean and standard deviation) with cross-tile context, and the parameter maps are
+    bilinearly interpolated back to full resolution so adjacent tiles blend smoothly.
 
     Attributes:
-        fc (nn.Sequential): Tiny MLP predicting per-channel gamma and gain from image statistics.
+        tiles (int): Tile grid size (tiles x tiles), as in CLAHE's tileGridSize.
+        fc (nn.Sequential): Tiny conv net predicting per-tile gamma and gain from tile statistics.
     """
 
-    def __init__(self, c1=3, r=8):
+    def __init__(self, c1=3, r=8, tiles=8):
         """Initialize LearnableContrast module.
 
         Args:
             c1 (int): Number of input image channels.
-            r (int): Hidden width of the statistics MLP.
+            r (int): Hidden width of the statistics network.
+            tiles (int): Tile grid size; statistics and corrections are computed per tile.
         """
         super().__init__()
-        self.fc = nn.Sequential(nn.Conv2d(2 * c1, r, 1), nn.SiLU(), nn.Conv2d(r, 2 * c1, 1))
+        self.tiles = tiles
+        self.fc = nn.Sequential(nn.Conv2d(2 * c1, r, 3, 1, 1), nn.SiLU(), nn.Conv2d(r, 2 * c1, 1))
         nn.init.zeros_(self.fc[-1].weight)  # start as identity so early training is undisturbed
         nn.init.zeros_(self.fc[-1].bias)
 
     def forward(self, x):
-        """Apply per-image, per-channel adaptive gamma correction.
+        """Apply per-tile, per-channel adaptive gamma correction with smooth tile blending.
 
         Input and output shapes are (B, C, H, W); pixel values are expected in [0, 1].
 
@@ -390,11 +394,15 @@ class LearnableContrast(nn.Module):
         Returns:
             (torch.Tensor): Contrast-adapted image tensor in [0, 1].
         """
-        mean = x.mean((2, 3), keepdim=True)
-        std = x.std((2, 3), keepdim=True)
+        g = min(self.tiles, x.shape[-2], x.shape[-1])
+        mean = nn.functional.adaptive_avg_pool2d(x, g)
+        std = (nn.functional.adaptive_avg_pool2d(x * x, g) - mean * mean).clamp(min=1e-6).sqrt()
         gamma, gain = self.fc(torch.cat((mean, std), 1)).chunk(2, 1)
         gamma = 1.0 + torch.tanh(gamma)  # (0, 2), identity at init
         gain = 1.0 + torch.tanh(gain)  # (0, 2), identity at init
+        size = x.shape[-2:]
+        gamma = nn.functional.interpolate(gamma, size=size, mode="bilinear", align_corners=False)
+        gain = nn.functional.interpolate(gain, size=size, mode="bilinear", align_corners=False)
         return (x.clamp(1e-6, 1.0) ** gamma * gain).clamp(0, 1)
 
 
