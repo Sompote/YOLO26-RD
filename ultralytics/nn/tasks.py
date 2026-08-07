@@ -58,7 +58,6 @@ from ultralytics.nn.modules import (
     HGStem,
     ImagePoolingAttn,
     Index,
-    LearnableContrast,
     LRPCHead,
     Pose,
     Pose26,
