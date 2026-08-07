@@ -18,9 +18,11 @@ __all__ = (
     "ConvTranspose",
     "DWConv",
     "DWConvTranspose2d",
+    "EdgeSPD",
     "Focus",
     "GhostConv",
     "Index",
+    "LearnableContrast",
     "LightConv",
     "RepConv",
     "SpatialAttention",
@@ -307,6 +309,93 @@ class Focus(nn.Module):
         """
         return self.conv(torch.cat((x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]), 1))
         # return self.conv(self.contract(x))
+
+
+class EdgeSPD(nn.Module):
+    """Edge-guided space-to-depth downsampling for thin, low-contrast structures.
+
+    A fixed Sobel gradient prior gates the input features toward edge evidence, then a lossless
+    space-to-depth rearrangement (2x downsample) and a fusion convolution replace strided
+    convolution, so hairline structures such as pavement cracks survive downsampling.
+
+    Attributes:
+        gate (nn.Sequential): Learnable 1x1 gate mapping the gradient magnitude to an emphasis map.
+        conv (Conv): Fusion convolution applied after space-to-depth.
+    """
+
+    def __init__(self, c1, c2, k=3):
+        """Initialize EdgeSPD module.
+
+        Args:
+            c1 (int): Number of input channels.
+            c2 (int): Number of output channels.
+            k (int): Fusion convolution kernel size.
+        """
+        super().__init__()
+        gx = torch.tensor([[-1.0, 0.0, 1.0], [-2.0, 0.0, 2.0], [-1.0, 0.0, 1.0]])
+        self.register_buffer("gx", gx.view(1, 1, 3, 3))
+        self.register_buffer("gy", gx.t().contiguous().view(1, 1, 3, 3))
+        self.gate = nn.Sequential(nn.Conv2d(1, 1, 1), nn.Sigmoid())
+        self.conv = Conv(c1 * 4, c2, k)
+
+    def forward(self, x):
+        """Gate features by Sobel gradient magnitude, then downsample via space-to-depth.
+
+        Input shape is (B, C, H, W) and output shape is (B, c2, H/2, W/2).
+
+        Args:
+            x (torch.Tensor): Input tensor.
+
+        Returns:
+            (torch.Tensor): Output tensor.
+        """
+        g = x.mean(1, keepdim=True)
+        gx, gy = self.gx.to(g.dtype), self.gy.to(g.dtype)
+        e = (nn.functional.conv2d(g, gx, padding=1) ** 2 + nn.functional.conv2d(g, gy, padding=1) ** 2 + 1e-6).sqrt()
+        x = x * (1.0 + self.gate(e))
+        return self.conv(torch.cat((x[..., ::2, ::2], x[..., 1::2, ::2], x[..., ::2, 1::2], x[..., 1::2, 1::2]), 1))
+
+
+class LearnableContrast(nn.Module):
+    """Learnable adaptive contrast stem for low-contrast imagery.
+
+    Predicts per-channel gamma and gain from global image statistics (mean and standard deviation)
+    and applies an end-to-end learnable gamma correction to the [0, 1] normalized input, adapting
+    contrast per image before feature extraction.
+
+    Attributes:
+        fc (nn.Sequential): Tiny MLP predicting per-channel gamma and gain from image statistics.
+    """
+
+    def __init__(self, c1=3, r=8):
+        """Initialize LearnableContrast module.
+
+        Args:
+            c1 (int): Number of input image channels.
+            r (int): Hidden width of the statistics MLP.
+        """
+        super().__init__()
+        self.fc = nn.Sequential(nn.Conv2d(2 * c1, r, 1), nn.SiLU(), nn.Conv2d(r, 2 * c1, 1))
+        nn.init.zeros_(self.fc[-1].weight)  # start as identity so early training is undisturbed
+        nn.init.zeros_(self.fc[-1].bias)
+
+    def forward(self, x):
+        """Apply per-image, per-channel adaptive gamma correction.
+
+        Input and output shapes are (B, C, H, W); pixel values are expected in [0, 1].
+
+        Args:
+            x (torch.Tensor): Input image tensor.
+
+        Returns:
+            (torch.Tensor): Contrast-adapted image tensor in [0, 1].
+        """
+        mean = x.mean((2, 3), keepdim=True)
+        std = x.std((2, 3), keepdim=True)
+        gamma, gain = self.fc(torch.cat((mean, std), 1)).chunk(2, 1)
+        gamma = 1.0 + torch.tanh(gamma)  # (0, 2), identity at init
+        gain = 1.0 + torch.tanh(gain)  # (0, 2), identity at init
+        return (x.clamp(1e-6, 1.0) ** gamma * gain).clamp(0, 1)
 
 
 class GhostConv(nn.Module):
