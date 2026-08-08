@@ -60,7 +60,7 @@ pip install -e .
 ## Usage
 
 ```bash
-# Train (n scale; copy the YAML to yolo26s-crack-v8.yaml etc. to select other scales)
+# Train (n scale; copy the YAML to yolo26s-rd-v8.yaml etc. to select other scales)
 yolo detect train model=models/yolo26-rd-v8.yaml data=your_road_damage.yaml \
      imgsz=1280 epochs=300 batch=16
 
