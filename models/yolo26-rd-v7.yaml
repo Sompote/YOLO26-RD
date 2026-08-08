@@ -1,4 +1,4 @@
-# YOLO26-Crack v7 — "SPD-A2-P2" novel road-damage model
+# YOLO26-RD v7 — "SPD-A2-P2" novel road-damage model
 # Design rationale (literature-backed):
 #   1. Focus (space-to-depth, = SPD-Conv, Sunkara & Luo 2022) replaces strided Conv at
 #      P2->P3 and P3->P4: lossless downsampling preserves thin, low-contrast crack pixels

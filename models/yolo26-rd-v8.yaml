@@ -1,4 +1,4 @@
-# YOLO26-Crack v8 — "CE-SPD" (Contrast-Enhanced, Edge-guided SPD) novel road-damage model
+# YOLO26-RD v8 — "CE-SPD" (Contrast-Enhanced, Edge-guided SPD) novel road-damage model
 # Novel contributions over stock YOLO26 (and over v7):
 #   0. LearnableContrast stem: tile-wise (8x8 grid) per-channel adaptive gamma/gain predicted
 #      from local statistics with cross-tile context and bilinear blending — a differentiable,

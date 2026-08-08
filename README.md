@@ -1,4 +1,4 @@
-# YOLO26-Crack (CE-SPD): Contrast-Enhanced, Edge-Guided Road Damage Detection
+# YOLO26-RD (CE-SPD): Contrast-Enhanced, Edge-Guided Road Damage Detection
 
 A novel end-to-end (NMS-free) object detector for pavement distress — **alligator cracking, linear cracks, and patching** — built on the YOLO26 architecture and specialized for thin, low-contrast crack structures in grayscale road-survey imagery.
 
@@ -33,8 +33,8 @@ Head (PANet + BiFPN-style skips)
 | Version | Config | Description |
 |---|---|---|
 | v3–v6 | (training server) | Prior baselines; best v6: 0.771 mAP50 / 0.467 mAP50-95 |
-| **v7** | [`models/yolo26-crack-v7.yaml`](models/yolo26-crack-v7.yaml) | Known-component recombination: Focus(SPD) + A2C2f + P2 head + BiFPN skips — ablation baseline |
-| **v8** | [`models/yolo26-crack-v8.yaml`](models/yolo26-crack-v8.yaml) | **Full CE-SPD model**: v7 + LearnableContrast stem + EdgeSPD (novel modules) |
+| **v7** | [`models/yolo26-rd-v7.yaml`](models/yolo26-rd-v7.yaml) | Known-component recombination: Focus(SPD) + A2C2f + P2 head + BiFPN skips — ablation baseline |
+| **v8** | [`models/yolo26-rd-v8.yaml`](models/yolo26-rd-v8.yaml) | **Full CE-SPD model**: v7 + LearnableContrast stem + EdgeSPD (novel modules) |
 
 Baseline validation results (v3–v6, all classes):
 
@@ -52,8 +52,8 @@ Per-class (v6): alligator 0.843 · crack 0.719 · patching 0.751 — **crack is 
 This repository is a fork of Ultralytics with the new modules (`EdgeSPD`, `LearnableContrast`) built in — stock `pip install ultralytics` will NOT load the v8 checkpoints.
 
 ```bash
-git clone https://github.com/Sompote/YOLO26-Crack.git
-cd YOLO26-Crack
+git clone https://github.com/Sompote/YOLO26-RD.git
+cd YOLO26-RD
 pip install -e .
 ```
 
@@ -61,7 +61,7 @@ pip install -e .
 
 ```bash
 # Train (n scale; copy the YAML to yolo26s-crack-v8.yaml etc. to select other scales)
-yolo detect train model=models/yolo26-crack-v8.yaml data=your_road_damage.yaml \
+yolo detect train model=models/yolo26-rd-v8.yaml data=your_road_damage.yaml \
      imgsz=1280 epochs=300 batch=16
 
 # Validate
