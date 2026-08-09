@@ -2073,3 +2073,41 @@ class RealNVP(nn.Module):
             self.float()
         z, log_det = self.backward_p(x)
         return self.prior.log_prob(z) + log_det
+
+
+class StripC3k2(C3k2):
+    """C3k2 followed by zero-initialized directional strip context.
+
+    Adds depthwise 1xk and kx1 convolutions on the block output, blended through a
+    zero-initialized scalar gate, so the module is exactly C3k2 at initialization.
+    Motivated by axis-aligned elongated pavement cracks (CCNet / strip-pooling literature):
+    a pixel on a crack gains evidence from its full row/column, which square kernels dilute.
+    """
+
+    def __init__(self, c1, c2, n=1, c3k=False, e=0.5, attn=False, g=1, shortcut=True, k=9):
+        """Initialize StripC3k2 with strip kernel size k (horizontal 1xk and vertical kx1)."""
+        super().__init__(c1, c2, n, c3k, e, attn, g, shortcut)
+        self.sh = nn.Conv2d(c2, c2, (1, k), 1, (0, k // 2), groups=c2, bias=False)
+        self.sv = nn.Conv2d(c2, c2, (k, 1), 1, (k // 2, 0), groups=c2, bias=False)
+        self.strip_gate = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x):
+        """Apply C3k2 then gated strip context."""
+        y = super().forward(x)
+        return y + self.strip_gate * (self.sh(y) + self.sv(y))
+
+
+class StripA2C2f(A2C2f):
+    """A2C2f followed by zero-initialized directional strip context (see StripC3k2)."""
+
+    def __init__(self, c1, c2, n=1, a2=True, area=1, residual=False, mlp_ratio=2.0, e=0.5, g=1, shortcut=True, k=9):
+        """Initialize StripA2C2f with strip kernel size k."""
+        super().__init__(c1, c2, n, a2, area, residual, mlp_ratio, e, g, shortcut)
+        self.sh = nn.Conv2d(c2, c2, (1, k), 1, (0, k // 2), groups=c2, bias=False)
+        self.sv = nn.Conv2d(c2, c2, (k, 1), 1, (k // 2, 0), groups=c2, bias=False)
+        self.strip_gate = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x):
+        """Apply A2C2f then gated strip context."""
+        y = super().forward(x)
+        return y + self.strip_gate * (self.sh(y) + self.sv(y))
